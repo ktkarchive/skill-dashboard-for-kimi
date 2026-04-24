@@ -181,6 +181,19 @@ python3 scripts/skill_dashboard.py --port 8080 --open
 | MCP servers not showing | Check that `MCP_JSON` file exists and is valid JSON |
 | Changes not saving | Ensure the registry file is writable |
 
+## Roadmap
+
+Features are released incrementally based on community interest. Every 5 new ⭐ stars unlocks the next item:
+
+| Stars | Feature | Description |
+|-------|---------|-------------|
+| ⭐ 5 | Light/Dark mode toggle | Switch between the current GitHub dark theme and a light theme |
+| ⭐ 10 | Responsive mobile layout | Collapsible table and adjusted layout for narrow screens |
+| ⭐ 15 | New skill template generator | "Create Skill" button that scaffolds a new skill directory with YAML frontmatter template |
+| ⭐ 20 | Export (JSON/CSV) | Download the full skill/MCP table as JSON or CSV for backup or external processing |
+
+Have a feature request? Open an issue on GitHub.
+
 ## License
 
 MIT
