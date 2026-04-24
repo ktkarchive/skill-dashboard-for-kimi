@@ -2,6 +2,8 @@
 
 CLI 스킬과 MCP 서버를 관리하는 웹 기반 대시보드입니다. 원래 [Kimi CLI](https://github.com/moonshot-ai/Kimi-CLI)용으로 개발되었지만, Claude Code, Codex CLI, OpenCode CLI 등 YAML frontmatter로 메타데이터를 관리하는 어떤 CLI와도 호환됩니다.
 
+![Dashboard Preview](docs/screenshots/preview.png)
+
 ## 기능
 
 - **통합 테이블**: 모든 스킬과 MCP 서버를 하나의 정렬/필터 가능한 테이블에서 확인

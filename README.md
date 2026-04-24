@@ -2,6 +2,8 @@
 
 A web-based dashboard for managing CLI skills and MCP servers. Originally built for [Kimi CLI](https://github.com/moonshot-ai/Kimi-CLI), but designed to work with Claude Code, Codex CLI, OpenCode CLI, or any CLI that stores skills as markdown files with YAML frontmatter.
 
+![Dashboard Preview](docs/screenshots/preview.png)
+
 ## Features
 
 - **Unified Table**: View all skills and MCP servers in one sortable, filterable table
