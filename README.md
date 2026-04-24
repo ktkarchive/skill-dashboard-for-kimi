@@ -2,8 +2,6 @@
 
 A web-based dashboard for managing CLI skills and MCP servers. Originally built for [Kimi CLI](https://github.com/moonshot-ai/Kimi-CLI), but designed to work with Claude Code, Codex CLI, OpenCode CLI, or any CLI that stores skills as markdown files with YAML frontmatter.
 
-![Dashboard Preview](docs/screenshots/preview.png)
-
 ## Features
 
 - **Unified Table**: View all skills and MCP servers in one sortable, filterable table
@@ -41,6 +39,48 @@ git clone https://github.com/ktkarchive/skill-dashboard-for-kimi.git
 cd skill-dashboard-for-kimi
 python3 scripts/skill_dashboard.py --port 8080 --open
 ```
+
+## Usage
+
+Once the server is running (default: `http://localhost:8080`):
+
+### 1. Browse the Dashboard
+Open your web browser and navigate to the URL shown in the terminal (e.g., `http://localhost:8080`). You will see:
+- **Statistics cards** at the top (Total, Skills, MCP Servers, Active, Inactive, Healthy)
+- **Category chart** showing the distribution of your skills
+- **Main table** listing all skills and MCP servers
+
+### 2. Search and Filter
+- Use the **Search** box to filter by name
+- Use the **Category** dropdown to filter by category
+- Use the **Status** dropdown to show only Active or Inactive items
+- Use the **Type** dropdown to show only Skills or MCP Servers
+
+### 3. Sort
+Click any column header to sort the table:
+- **Name**, **Category**, **Description**, **Health**, **Last Used**, **Last Updated**
+- Click again to toggle between ascending and descending order
+
+### 4. Activate / Deactivate
+- Click **Disable** to mark a skill or MCP server as inactive
+- Click **Enable** to reactivate it
+- Inactive items appear with a ⚫ status badge and a grayed-out button
+
+### 5. Edit Metadata
+- Click **Detail** on any row
+- Edit **Category**, **Description**, or **URL** in the modal
+- Click **Save** to apply changes immediately without reloading the page
+- If a URL is set, a 🔗 link emoji appears next to the description in the table
+
+### 6. Remove a Skill
+- Click **Remove** on a skill row (not available for MCP servers)
+- Read the warning message
+- Type exactly `remove` in the input box
+- Click **Confirm Remove** to permanently delete the skill directory
+- Click **Cancel** or type anything else to abort
+
+### 7. Refresh
+Click the **Refresh** button to rescan the skills directory and MCP config and reload the table.
 
 ## Cross-CLI Setup
 
