@@ -298,6 +298,10 @@ def toggle_mcp_server(name: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Usage sync
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # HTML generation
 # ---------------------------------------------------------------------------
 
@@ -333,15 +337,16 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
         active = s.get('active', True)
         btn_class = '' if active else 'btn-inactive'
         is_skill = s.get('type') != 'mcp'
-        remove_btn = f'<button class="btn-remove" onclick="confirmRemove(\'{name_escaped}\')">Remove</button>' if is_skill else ''
+        item_type = s.get('type', 'skill')
+        remove_btn = f'<button class="btn-remove" onclick="confirmRemove(\'{name_escaped}\', \'{item_type}\')">Remove</button>'
         rows.append(f"""
-        <tr data-name="{name_escaped}" data-category="{_html.escape(s.get('category',''))}" data-active="{active}" data-type="{s.get('type','skill')}" data-usage="{usage_display}" data-lastused="{last_used}" data-lastupdated="{last_updated}">
+        <tr data-name="{name_escaped}" data-category="{_html.escape(s.get('category',''))}" data-active="{active}" data-type="{s.get('type','skill')}" data-lastused="{last_updated}" data-lastupdated="{last_updated}">
+            <td><input type="checkbox" class="row-check" data-name="{name_escaped}"></td>
             <td>{type_badge} {status_badge}</td>
             <td><strong>{name_escaped}</strong></td>
             <td><span class="cat cat-{s.get('category','')}">{_html.escape(s.get('category',''))}</span></td>
             <td class="desc">{_html.escape(desc_short)}{url_link}</td>
             <td>{health_badge}</td>
-            <td>{last_used}</td>
             <td>{last_updated}</td>
             <td>
                 <button class="{btn_class}" onclick="toggleItem('{name_escaped}', '{s.get('type','skill')}', this)">{'Disable' if active else 'Enable'}</button>
@@ -354,9 +359,9 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
     cat_bars = ""
     for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
         pct = count / total * 100
-        cat_bars += f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div><span>{cat} ({count})</span></div>'
+        cat_bars += f'<div class="bar" onclick="filterCategory(\'{cat}\')"><div class="bar-fill" style="width:{pct}%"></div><span>{cat} ({count})</span></div>'
 
-    return f"""<!DOCTYPE html>
+    html_prefix = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
@@ -416,7 +421,8 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
         #remove-input {{ margin: 12px 0; }}
         .remove-actions {{ display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }}
         .chart {{ background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 15px; margin-bottom: 20px; }}
-        .bar {{ margin: 5px 0; position: relative; }}
+        .bar {{ margin: 5px 0; position: relative; cursor: pointer; }}
+        .bar:hover .bar-fill {{ opacity: 0.8; }}
         .bar-fill {{ height: 20px; background: #238636; border-radius: 4px; }}
         .bar span {{ position: absolute; left: 5px; top: 2px; font-size: 12px; }}
         #detail-modal {{ display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); justify-content: center; align-items: center; }}
@@ -425,6 +431,20 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
         .tabs {{ display: flex; gap: 10px; margin-bottom: 15px; }}
         .tab {{ cursor: pointer; padding: 6px 12px; border-radius: 6px; background: #21262d; }}
         .tab.active {{ background: #1f6feb; }}
+        mark {{ background: #d29922; color: #0d1117; padding: 1px 3px; border-radius: 3px; font-weight: 600; }}
+        #toast-container {{ position: fixed; top: 20px; right: 20px; z-index: 200; display: flex; flex-direction: column; gap: 8px; }}
+        .toast {{ background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 12px 16px; color: #c9d1d9; font-size: 14px; animation: toastIn 0.3s ease; min-width: 200px; border-left: 4px solid #30363d; }}
+        .toast.success {{ border-left-color: #238636; }}
+        .toast.error {{ border-left-color: #f85149; }}
+        .toast.warning {{ border-left-color: #d29922; }}
+        @keyframes toastIn {{ from {{ transform: translateX(100%); opacity: 0; }} to {{ transform: translateX(0); opacity: 1; }} }}
+        .bulk-actions {{ display: none; gap: 8px; align-items: center; margin-bottom: 12px; padding: 8px 12px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; }}
+        .bulk-actions.visible {{ display: flex; }}
+        .bulk-count {{ color: #8b949e; font-size: 12px; margin-right: 8px; }}
+        .row-check {{ cursor: pointer; }}
+        #selectAll {{ cursor: pointer; }}
+        .shortcuts {{ color: #8b949e; font-size: 11px; margin-left: auto; }}
+        kbd {{ background: #21262d; border: 1px solid #30363d; padding: 1px 5px; border-radius: 4px; font-family: monospace; font-size: 11px; }}
     </style>
 </head>
 <body>
@@ -443,6 +463,14 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
     <div class="chart">
         <h3 style="margin-bottom:10px">Categories</h3>
         {cat_bars}
+    </div>
+
+    <div class="bulk-actions" id="bulkActions">
+        <span class="bulk-count" id="bulkCount">0 selected</span>
+        <button onclick="bulkToggle(true)">Enable</button>
+        <button onclick="bulkToggle(false)">Disable</button>
+        <button class="btn-remove" onclick="bulkRemove()">Remove</button>
+        <span class="shortcuts"><kbd>/</kbd> search <kbd>esc</kbd> close <kbd>r</kbd> refresh</span>
     </div>
 
     <div class="filters">
@@ -467,14 +495,13 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
     <table>
         <thead>
             <tr>
-                <th class="sortable" data-col="0" onclick="sortTable(0)">Type/Status</th>
-                <th class="sortable" data-col="1" onclick="sortTable(1)">Name</th>
-                <th class="sortable" data-col="2" onclick="sortTable(2)">Category</th>
-                <th class="sortable" data-col="3" onclick="sortTable(3)">Description</th>
-                <th class="sortable" data-col="4" onclick="sortTable(4)">Health</th>
-                <th class="sortable sort-desc" data-col="5" onclick="sortTable(5)">Usage(30d)</th>
-                <th class="sortable" data-col="6" onclick="sortTable(6)">Last Used</th>
-                <th class="sortable" data-col="7" onclick="sortTable(7)">Last Updated</th>
+                <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll(this)"></th>
+                <th class="sortable" data-col="1" onclick="sortTable(1)">Type/Status</th>
+                <th class="sortable" data-col="2" onclick="sortTable(2)">Name</th>
+                <th class="sortable" data-col="3" onclick="sortTable(3)">Category</th>
+                <th class="sortable" data-col="4" onclick="sortTable(4)">Description</th>
+                <th class="sortable" data-col="5" onclick="sortTable(5)">Health</th>
+                <th class="sortable" data-col="6" onclick="sortTable(6)">Last Updated</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -501,228 +528,336 @@ def generate_html(skills: list[dict], mcps: list[dict]) -> str:
             </div>
         </div>
     </div>
+"""
 
+    js_template = """
     <script>
-        const allItems = {json.dumps(skills + mcps, default=str)};
-
-        function filterTable() {{
+        const allItems = %s;
+        function showToast(message, type) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast ' + (type || 'success');
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+        function highlightText(text, query) {
+            if (!query) return text;
+            const lt = text.toLowerCase();
+            const lq = query.toLowerCase();
+            let result = "";
+            let last = 0;
+            let idx = lt.indexOf(lq);
+            while (idx !== -1) {
+                result += text.slice(last, idx);
+                result += "<mark>" + text.slice(idx, idx + query.length) + "</mark>";
+                last = idx + query.length;
+                idx = lt.indexOf(lq, last);
+            }
+            result += text.slice(last);
+            return result;
+        }
+        function filterTable() {
             const search = document.getElementById('search').value.toLowerCase();
             const cat = document.getElementById('catFilter').value;
             const status = document.getElementById('statusFilter').value;
             const type = document.getElementById('typeFilter').value;
             const rows = document.querySelectorAll('#skillTable tr');
-
-            rows.forEach(row => {{
+            saveState();
+            rows.forEach(row => {
                 const name = row.dataset.name.toLowerCase();
                 const rowCat = row.dataset.category;
                 const rowStatus = row.dataset.active;
                 const rowType = row.dataset.type;
-
-                const matchSearch = name.includes(search);
+                const matchSearch = !search || name.includes(search);
                 const matchCat = !cat || rowCat === cat;
                 const matchStatus = !status || rowStatus === status;
                 const matchType = !type || rowType === type;
-
-                row.style.display = matchSearch && matchCat && matchStatus && matchType ? '' : 'none';
-            }});
-        }}
-
-        function toggleItem(name, type, btn) {{
+                const show = matchSearch && matchCat && matchStatus && matchType;
+                row.style.display = show ? '' : 'none';
+                const nameCell = row.cells[2];
+                const descCell = row.cells[4];
+                if (!nameCell.dataset.original) nameCell.dataset.original = nameCell.innerHTML;
+                if (!descCell.dataset.original) descCell.dataset.original = descCell.innerHTML;
+                if (show && search) {
+                    nameCell.innerHTML = highlightText(nameCell.dataset.original, search);
+                    const origDesc = descCell.dataset.original;
+                    if (origDesc.includes('<a')) {
+                        const parts = origDesc.split('<a');
+                        descCell.innerHTML = highlightText(parts[0], search) + (parts[1] ? '<a' + parts[1] : '');
+                    } else {
+                        descCell.innerHTML = highlightText(origDesc, search);
+                    }
+                } else {
+                    nameCell.innerHTML = nameCell.dataset.original;
+                    descCell.innerHTML = descCell.dataset.original;
+                }
+            });
+        }
+        function filterCategory(category) {
+            document.getElementById('catFilter').value = category;
+            filterTable();
+            showToast('Filtered by category: ' + category, 'success');
+        }
+        function saveState() {
+            localStorage.setItem('dashboard_state', JSON.stringify({
+                catFilter: document.getElementById('catFilter').value,
+                statusFilter: document.getElementById('statusFilter').value,
+                typeFilter: document.getElementById('typeFilter').value,
+                search: document.getElementById('search').value
+            }));
+        }
+        function restoreState() {
+            try {
+                const s = JSON.parse(localStorage.getItem('dashboard_state') || '{}');
+                if (s.catFilter) document.getElementById('catFilter').value = s.catFilter;
+                if (s.statusFilter) document.getElementById('statusFilter').value = s.statusFilter;
+                if (s.typeFilter) document.getElementById('typeFilter').value = s.typeFilter;
+                if (s.search) document.getElementById('search').value = s.search;
+                filterTable();
+            } catch (e) {}
+        }
+        function toggleItem(name, type, btn) {
             btn.disabled = true;
             btn.textContent = '...';
             const endpoint = type === 'mcp' ? '/api/mcp/' + name + '/toggle' : '/api/skills/' + name + '/toggle';
-            fetch(endpoint, {{method: 'POST'}})
+            fetch(endpoint, {method: 'POST'})
                 .then(r => r.json())
-                .then(data => {{
+                .then(data => {
+                    showToast(name + ' ' + (data.active ? 'enabled' : 'disabled'), 'success');
                     location.reload();
-                }})
-                .catch(err => {{
-                    alert('Error: ' + err);
+                })
+                .catch(err => {
+                    showToast('Error: ' + err, 'error');
                     btn.disabled = false;
                     btn.textContent = 'Toggle';
-                }});
-        }}
-
-        function showDetail(name) {{
+                });
+        }
+        function showDetail(name) {
             const item = allItems.find(s => s.name === name);
             if (!item) return;
-
             const isSkill = item.type !== 'mcp';
             const healthIssues = (item.health_issues || []).length
                 ? '<ul>' + item.health_issues.map(i => '<li>' + i + '</li>').join('') + '</ul>'
                 : '<span style="color:#3fb950">None</span>';
-
             let html = '<h2>' + (isSkill ? '📦 ' : '🤖 ') + item.name + '</h2>';
-
             html += '<div class="detail-row"><label>Type</label><div class="readonly">' + (item.type || 'skill') + '</div></div>';
-
-            // Editable category
-            html += '<div class="detail-row"><label>Category</label>';
-            html += '<input type="text" id="edit-category" class="edit-field" value="' + (item.category || '') + '"></div>';
-
-            // Editable description
-            html += '<div class="detail-row"><label>Description</label>';
-            html += '<textarea id="edit-description" class="edit-field" rows="4">' + (item.description || '') + '</textarea></div>';
-
-            // Editable URL
-            html += '<div class="detail-row"><label>URL</label>';
-            html += '<input type="text" id="edit-url" class="edit-field" placeholder="https://..."></div>';
-
+            html += '<div class="detail-row"><label>Category</label><input type="text" id="edit-category" class="edit-field" value="' + (item.category || '') + '"></div>';
+            html += '<div class="detail-row"><label>Description</label><textarea id="edit-description" class="edit-field" rows="4">' + (item.description || '') + '</textarea></div>';
+            html += '<div class="detail-row"><label>URL</label><input type="text" id="edit-url" class="edit-field" placeholder="https://..."></div>';
             html += '<div class="detail-row"><label>Health</label><div class="readonly">' + item.health + '</div></div>';
             html += '<div class="detail-row"><label>Health Issues</label><div class="readonly">' + healthIssues + '</div></div>';
-
-            if (!isSkill) {{
-                var cfg = item.config || {{}};
+            if (!isSkill) {
+                var cfg = item.config || {};
+                var envKeys = Object.keys(cfg.env || {});
+                var envMasked = envKeys.map(function(k) { return k + '=***'; });
                 html += '<div class="detail-row"><label>Command</label><div class="readonly"><code>' + (cfg.command || 'N/A') + '</code></div></div>';
                 html += '<div class="detail-row"><label>Args</label><div class="readonly"><code>' + JSON.stringify(cfg.args || []) + '</code></div></div>';
-                html += '<div class="detail-row"><label>Env vars</label><div class="readonly"><code>' + JSON.stringify(Object.keys(cfg.env || {{}})) + '</code></div></div>';
-            }} else {{
+                html += '<div class="detail-row"><label>Env vars</label><div class="readonly"><code>' + JSON.stringify(envMasked) + '</code></div></div>';
+            } else {
                 html += '<div class="detail-row"><label>References</label><div class="readonly">' + item.reference_count + ' files</div></div>';
-            }}
-
+            }
             html += '<div class="detail-row"><label>Tags</label><div class="readonly">' + (item.tags || []).join(', ') + '</div></div>';
             html += '<div class="detail-row"><label>Path</label><div class="readonly"><code>' + (item.dir || '') + '</code></div></div>';
-
             html += '<div class="detail-actions">';
             html += '<button class="save-btn" id="detail-save-btn">Save</button>';
             html += '<button class="secondary" id="detail-close-btn">Close</button>';
             html += '</div>';
-
             document.getElementById('detail-body').innerHTML = html;
             document.getElementById('edit-url').value = item.url || '';
             document.getElementById('detail-modal').style.display = 'flex';
-
-            document.getElementById('detail-save-btn').onclick = function() {{
-                saveDetail(item.name, item.type || 'skill');
-            }};
-            document.getElementById('detail-close-btn').onclick = function() {{
-                document.getElementById('detail-modal').style.display = 'none';
-            }};
-        }}
-
-        function saveDetail(name, type) {{
+            document.getElementById('detail-save-btn').onclick = function() { saveDetail(item.name, item.type || 'skill'); };
+            document.getElementById('detail-close-btn').onclick = function() { document.getElementById('detail-modal').style.display = 'none'; };
+        }
+        function saveDetail(name, type) {
             const category = document.getElementById('edit-category').value;
             const description = document.getElementById('edit-description').value;
             const url = document.getElementById('edit-url').value;
             const endpoint = type === 'mcp' ? '/api/mcp/' + name + '/update' : '/api/skills/' + name + '/update';
-            fetch(endpoint, {{
+            fetch(endpoint, {
                 method: 'POST',
-                headers: {{'Content-Type': 'application/json'}},
-                body: JSON.stringify({{category, description, url}})
-            }})
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({category, description, url})
+            })
             .then(r => r.json())
-            .then(data => {{
-                if (data.error) {{ alert('Error: ' + data.error); return; }}
-                // Update local cache
+            .then(data => {
+                if (data.error) { showToast('Error: ' + data.error, 'error'); return; }
                 const item = allItems.find(s => s.name === name);
-                if (item) {{ item.category = category; item.description = description; item.url = url; }}
-                // Update table row without reload
+                if (item) { item.category = category; item.description = description; item.url = url; }
                 const row = document.querySelector('#skillTable tr[data-name="' + name + '"]');
-                if (row) {{
+                if (row) {
                     row.dataset.category = category;
-                    row.cells[2].innerHTML = '<span class="cat cat-' + category + '">' + category + '</span>';
+                    row.cells[3].innerHTML = '<span class="cat cat-' + category + '">' + category + '</span>';
                     const descShort = description.length > 90 ? description.substring(0, 90) + '...' : description;
-                    if (url) {{
-                        row.cells[3].innerHTML = descShort + ' <a href="' + url + '" target="_blank" style="color:#58a6ff;text-decoration:none;">🔗</a>';
-                    }} else {{
-                        row.cells[3].textContent = descShort;
-                    }}
-                }}
+                    if (url) {
+                        row.cells[4].innerHTML = descShort + ' <a href="' + url + '" target="_blank" style="color:#58a6ff;text-decoration:none;">🔗</a>';
+                    } else {
+                        row.cells[4].textContent = descShort;
+                    }
+                }
                 document.getElementById('detail-modal').style.display = 'none';
-            }})
-            .catch(err => alert('Error: ' + err));
-        }}
-
-        let sortDir = {{}};
-        function sortTable(colIndex) {{
+                showToast(name + ' saved', 'success');
+            })
+            .catch(err => showToast('Error: ' + err, 'error'));
+        }
+        let sortDir = {};
+        function sortTable(colIndex) {
             const tbody = document.getElementById('skillTable');
             const rows = Array.from(tbody.querySelectorAll('tr'));
             const th = document.querySelector('th[data-col="' + colIndex + '"]');
+            if (!th) return;
             const key = th.textContent.trim();
-
-            // Toggle direction
-            const currentDir = sortDir[key] || 'desc';
+            const currentDir = sortDir[key] || 'asc';
             const newDir = currentDir === 'asc' ? 'desc' : 'asc';
-            sortDir = {{}}; sortDir[key] = newDir;
-
-            // Update header classes
+            sortDir = {}; sortDir[key] = newDir;
             document.querySelectorAll('th.sortable').forEach(h => h.classList.remove('sort-asc','sort-desc'));
             th.classList.add(newDir === 'asc' ? 'sort-asc' : 'sort-desc');
-
-            rows.sort((a, b) => {{
-                let av = a.cells[colIndex].textContent.trim();
-                let bv = b.cells[colIndex].textContent.trim();
-
-                // Numeric sort for usage
-                if (colIndex === 5) {{
-                    av = parseInt(av) || 0;
-                    bv = parseInt(bv) || 0;
-                }}
-                // Date sort for last used / last updated
-                if (colIndex === 6 || colIndex === 7) {{
+            rows.sort((a, b) => {
+                let av = a.cells[colIndex] ? a.cells[colIndex].textContent.trim() : '';
+                let bv = b.cells[colIndex] ? b.cells[colIndex].textContent.trim() : '';
+                if (colIndex === 6) {
                     av = av === 'Never' || av === '-' ? '' : av;
                     bv = bv === 'Never' || bv === '-' ? '' : bv;
-                }}
-
+                }
                 if (av < bv) return newDir === 'asc' ? -1 : 1;
                 if (av > bv) return newDir === 'asc' ? 1 : -1;
                 return 0;
-            }});
-
+            });
             rows.forEach(r => tbody.appendChild(r));
-        }}
-
-        function closeDetail(e) {{
-            if (e.target.id === 'detail-modal') {{
+        }
+        function closeDetail(e) {
+            if (e.target.id === 'detail-modal') {
                 document.getElementById('detail-modal').style.display = 'none';
-            }}
-        }}
-
+            }
+        }
         let removeTargetName = '';
-
-        function confirmRemove(name) {{
+        let removeTargetType = 'skill';
+        function confirmRemove(name, type) {
             removeTargetName = name;
+            removeTargetType = type || 'skill';
             document.getElementById('remove-target-name').textContent = name;
             document.getElementById('remove-input').value = '';
             document.getElementById('remove-confirm-btn').disabled = true;
             document.getElementById('remove-modal').style.display = 'flex';
-        }}
-
-        function checkRemoveInput() {{
+        }
+        function checkRemoveInput() {
             const val = document.getElementById('remove-input').value.trim();
             document.getElementById('remove-confirm-btn').disabled = val !== 'remove';
-        }}
-
-        function executeRemove() {{
+        }
+        function executeRemove() {
             const btn = document.getElementById('remove-confirm-btn');
-            btn.disabled = true;
-            btn.textContent = 'Removing...';
-            const endpoint = '/api/skills/' + removeTargetName + '/remove';
-            fetch(endpoint, {{method: 'POST'}})
+            btn.disabled = true; btn.textContent = 'Removing...';
+            const endpoint = removeTargetType === 'mcp' ? '/api/mcp/' + removeTargetName + '/remove' : '/api/skills/' + removeTargetName + '/remove';
+            fetch(endpoint, {method: 'POST'})
                 .then(r => r.json())
-                .then(data => {{
-                    if (data.error) {{ alert('Error: ' + data.error); btn.disabled = false; btn.textContent = 'Confirm Remove'; return; }}
+                .then(data => {
+                    if (data.error) { showToast('Error: ' + data.error, 'error'); btn.disabled = false; btn.textContent = 'Confirm Remove'; return; }
                     const row = document.querySelector('#skillTable tr[data-name="' + removeTargetName + '"]');
                     if (row) row.remove();
                     document.getElementById('remove-modal').style.display = 'none';
                     btn.textContent = 'Confirm Remove';
-                }})
-                .catch(err => {{
-                    alert('Error: ' + err);
-                    btn.disabled = false;
-                    btn.textContent = 'Confirm Remove';
-                }});
-        }}
-
-        function closeRemoveModal(e) {{
-            if (e.target.id === 'remove-modal') {{
+                    showToast(removeTargetName + ' removed', 'success');
+                })
+                .catch(err => { showToast('Error: ' + err, 'error'); btn.disabled = false; btn.textContent = 'Confirm Remove'; });
+        }
+        function closeRemoveModal(e) {
+            if (e.target.id === 'remove-modal') {
                 document.getElementById('remove-modal').style.display = 'none';
-            }}
-        }}
+            }
+        }
+        function toggleSelectAll(cb) {
+            document.querySelectorAll('.row-check').forEach(c => c.checked = cb.checked);
+            updateBulkActions();
+        }
+        document.getElementById('skillTable').addEventListener('change', function(e) {
+            if (e.target.classList.contains('row-check')) updateBulkActions();
+        });
+        function updateBulkActions() {
+            const checked = document.querySelectorAll('.row-check:checked');
+            const bulk = document.getElementById('bulkActions');
+            if (checked.length > 0) {
+                bulk.classList.add('visible');
+                document.getElementById('bulkCount').textContent = checked.length + ' selected';
+            } else {
+                bulk.classList.remove('visible');
+            }
+        }
+        function getCheckedRows() {
+            return Array.from(document.querySelectorAll('.row-check:checked')).map(c => ({
+                name: c.dataset.name,
+                row: c.closest('tr')
+            }));
+        }
+        function bulkToggle(enable) {
+            const items = getCheckedRows();
+            let done = 0;
+            items.forEach(item => {
+                const type = item.row.dataset.type;
+                fetch('/api/' + (type === 'mcp' ? 'mcp/' : 'skills/') + item.name + '/toggle', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(() => {
+                        done++;
+                        if (done === items.length) { location.reload(); }
+                    })
+                    .catch(err => showToast(item.name + ' toggle failed', 'error'));
+            });
+        }
+        function bulkRemove() {
+            const items = getCheckedRows();
+            if (!items.length) { showToast('No items selected', 'warning'); return; }
+            removeTargetName = items.map(i => i.name).join(', ');
+            document.getElementById('remove-target-name').textContent = removeTargetName;
+            document.getElementById('remove-input').value = '';
+            document.getElementById('remove-confirm-btn').disabled = true;
+            document.getElementById('remove-modal').style.display = 'flex';
+            const origOnclick = document.getElementById('remove-confirm-btn').onclick;
+            document.getElementById('remove-confirm-btn').onclick = function() {
+                const btn = document.getElementById('remove-confirm-btn');
+                btn.disabled = true; btn.textContent = 'Removing...';
+                let done = 0;
+                items.forEach(item => {
+                    const endpoint = item.row.dataset.type === 'mcp' ? '/api/mcp/' + item.name + '/remove' : '/api/skills/' + item.name + '/remove';
+                    fetch(endpoint, {method: 'POST'})
+                        .then(r => r.json())
+                        .then(data => {
+                            if (!data.error && item.row) item.row.remove();
+                            done++;
+                            if (done === items.length) {
+                                document.getElementById('remove-modal').style.display = 'none';
+                                btn.textContent = 'Confirm Remove';
+                                document.getElementById('remove-confirm-btn').onclick = origOnclick;
+                                showToast(items.length + ' skills removed', 'success');
+                            }
+                        })
+                        .catch(() => { done++; });
+                });
+            };
+        }
+        document.addEventListener('keydown', function(e) {
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                document.getElementById('search').focus();
+            }
+            if (e.key === 'Escape') {
+                document.getElementById('detail-modal').style.display = 'none';
+                document.getElementById('remove-modal').style.display = 'none';
+            }
+            if ((e.key === 'r' || e.key === 'R') && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                location.reload();
+            }
+        });
+        restoreState();
     </script>
+    """
+
+    html_suffix = """
+    <div id="toast-container"></div>
 </body>
 </html>
-"""
+    """
+
+    return html_prefix + (js_template % json.dumps(skills + mcps, default=str)) + html_suffix
 
 
 # ---------------------------------------------------------------------------
@@ -850,6 +985,23 @@ class DashboardHandler(SimpleHTTPRequestHandler):
                     save_registry(registry)
                 self.send_json({"name": name, "removed": True})
 
+        elif parsed.path.startswith("/api/mcp/") and parsed.path.endswith("/remove"):
+            name = parsed.path.split("/")[3]
+            mcp_data = load_mcp_json()
+            servers = mcp_data.get("mcpServers", {})
+            if name not in servers:
+                self.send_json({"error": f"MCP server not found: {name}"}, status=404)
+            else:
+                del servers[name]
+                save_mcp_json(mcp_data)
+                registry = load_registry()
+                if "mcp_servers" in registry and name in registry["mcp_servers"]:
+                    del registry["mcp_servers"][name]
+                if "mcp_backups" in registry and name in registry["mcp_backups"]:
+                    del registry["mcp_backups"][name]
+                save_registry(registry)
+                self.send_json({"name": name, "removed": True})
+
         else:
             self.send_error(404)
 
@@ -882,9 +1034,9 @@ def main():
 
     if args.scan:
         skills = scan_skills()
+        mcps = scan_mcp_servers()
         for s in skills:
             print(f"{s['name']:<30} {s.get('category',''):<15} {s['health']:<10} {s.get('description','')[:50]}")
-        mcps = scan_mcp_servers()
         for m in mcps:
             status = "active" if m.get("active") else "inactive"
             print(f"{m['name']:<30} {'mcp':<15} {status:<10} {m.get('description','')[:50]}")
@@ -892,11 +1044,11 @@ def main():
 
     if args.health:
         skills = scan_skills()
+        mcps = scan_mcp_servers()
         issues = []
         for s in skills:
             if s.get("health") != "healthy":
                 issues.append((s["name"], s.get("health_issues", [])))
-        mcps = scan_mcp_servers()
         for m in mcps:
             if m.get("health") != "healthy":
                 issues.append((m["name"], m.get("health_issues", [])))
